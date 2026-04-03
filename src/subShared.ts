@@ -4,6 +4,8 @@
 
 import { isLikelyYAML } from "./utils";
 import { AnyJson } from "./convert/type";
+import { isUriBasedContent, convertUriToClashConfig } from "./convert/v2ray";
+import { dumpYAML } from "./utils";
 
 /**
  * @see https://www.clashverge.dev/guide/url_schemes.html#_4
@@ -158,6 +160,13 @@ export async function getSubContent(
 
     // check is yaml
     if (!isLikelyYAML(text)) {
+      // Check if it's URI-based content (vmess/vless/trojan/ss)
+      if (isUriBasedContent(text)) {
+        console.log("Detected URI-based subscription, converting to Clash format");
+        const clashConfig = convertUriToClashConfig(text, subHeaders.fileName ?? "URI-Sub");
+        const yamlContent = dumpYAML(clashConfig);
+        return [yamlContent, subHeaders];
+      }
       throw new Error("Upstream error: content is not yaml");
     }
 
