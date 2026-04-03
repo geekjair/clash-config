@@ -30,9 +30,7 @@ const SubQuerySchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((val) => val === "true"),
-  level: z
-    .enum(["debug", "info", "warning", "error", "silent"])
-    .default("warning"),
+  level: z.enum(["debug", "info", "warning", "error", "silent"]).default("warning"),
 
   regions: z
     .string("regions code divided by comma")
@@ -40,9 +38,8 @@ const SubQuerySchema = z.object({
     .optional(),
   rate: z.coerce.number().int().positive().optional(),
   filter: z.string().optional(),
+  preview: z.boolean().optional(),
 });
-
-
 
 /**
  * Basic clash config converter
@@ -64,7 +61,12 @@ app.get(
 
     const [clientType, clientPlatform] = checkUserAgent(userAgent ?? "");
 
-    if (!clientType) {
+    // Allow browser preview with ?preview=true or X-Preview-UA header
+    const allowPreview = params.preview === true || !!c.req.header("X-Preview-UA");
+    const effectiveClientType: ClientType =
+      allowPreview && !clientType ? ClientType.UnknownClash : (clientType ?? ClientType.UnknownClash);
+
+    if (!effectiveClientType) {
       console.log("Blocked request with User-Agent:", userAgent);
       c.status(400);
       return c.text("Not supported, must request inside clash app");
@@ -83,7 +85,7 @@ app.get(
         const dnsPolicy = DNSPolicySchema.parse({ nameserver: params.nameserver, rules: params.rules });
 
         contentFinal = await convertSub(yamlContent, subHeaders.fileName ?? "Clash-Config-Sub", {
-          clientType,
+          clientType: effectiveClientType,
           clientPlatform,
           dnsPolicy,
           disableQuic: params.quic,
@@ -93,7 +95,7 @@ app.get(
             maxBillingRate: params.rate,
             regions: params.regions,
             excludeRegex: params.filter,
-          }
+          },
         });
       } else {
         // 不进行配置优化，但是会转化为客户端配置
@@ -139,7 +141,7 @@ app.get(":token", async (c) => {
     const { city, country } = c.req.raw.cf ?? {};
     console.log(`Retrieving subscription content from ${city}, ${country}`, { userAgent });
     const { content, headers, subInfo } = await getOrFetchSubContent(token, userAgent!);
-    
+
     const dnsPolicy = DNSPolicySchema.parse(subInfo.dnsPolicy ?? {});
     const logLevel = subInfo.logLevel ?? "warning";
 
